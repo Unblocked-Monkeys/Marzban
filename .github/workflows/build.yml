@@ -1,61 +1,110 @@
-name: Build
+name: Build Container Image
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-container-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-docker-image:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup nodejs
-        uses: actions/setup-node@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 16.17.0
+          node-version: 18
+          cache: npm
+          cache-dependency-path: app/dashboard/package-lock.json
 
-      - name: Install dependencies
+      - name: Install dashboard dependencies
         working-directory: ./app/dashboard
         run: npm ci
 
-      - name: Build project
+      - name: Build dashboard
         working-directory: ./app/dashboard
-        run: VITE_BASE_API=/api/ npm run build --if-present -- --outDir build --assetsDir statics
+        run: VITE_BASE_API=/api/ npm run build -- --outDir build --assetsDir statics
 
       - name: Create 404.html
         working-directory: ./app/dashboard
         run: cp ./build/index.html ./build/404.html
 
+      - name: Prepare image metadata
+        id: prep
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          repo_lower="$(echo "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          ghcr_image="ghcr.io/$repo_lower"
+
+          {
+            echo "ghcr_image=$ghcr_image"
+            echo "tags<<EOF"
+            echo "$ghcr_image:sha-${GITHUB_SHA::7}"
+
+            if [ "$REF_TYPE" = "branch" ] && [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+              echo "$ghcr_image:latest"
+            fi
+
+            if [ "$REF_TYPE" = "tag" ]; then
+              echo "$ghcr_image:$REF_NAME"
+              echo "$ghcr_image:latest"
+            fi
+
+            echo "EOF"
+            echo "labels<<EOF"
+            echo "org.opencontainers.image.source=https://github.com/$REPOSITORY"
+            echo "org.opencontainers.image.revision=$GITHUB_SHA"
+
+            if [ "$REF_TYPE" = "tag" ]; then
+              echo "org.opencontainers.image.version=$REF_NAME"
+            fi
+
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
+      - name: Login to GitHub Container Registry (non-PR only)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v3
+      - name: Build image (push outside PR)
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            gozargah/marzban:latest
-            gozargah/marzban:${{github.ref_name}}
-            ghcr.io/gozargah/marzban:latest
-            ghcr.io/gozargah/marzban:${{github.ref_name}}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.prep.outputs.tags }}
+          labels: ${{ steps.prep.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

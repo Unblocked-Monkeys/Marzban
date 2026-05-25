@@ -1,0 +1,12 @@
+# Marzban project overview
+- Purpose: proxy/VPN management panel built around Xray-core, with a Python backend, React/Vite dashboard, REST API, CLI, Telegram bot, and Docker deployment.
+- Tech stack: Python backend (FastAPI/Starlette/Uvicorn, SQLAlchemy/Alembic), React 18 + TypeScript + Vite dashboard under `app/dashboard`, Docker multi-stage image, docker-compose for runtime.
+- Rough structure:
+  - `main.py`: app startup and runtime wiring.
+  - `config.py`: environment-driven settings/constants.
+  - `app/`: backend application modules, database, dashboard source.
+  - `cli/` and `marzban-cli.py`: CLI commands.
+  - `xray_api/`: Xray integration.
+  - `.github/workflows/`: CI/CD workflows.
+  - `Dockerfile`, `docker-compose.yml`: container build and runtime.
+- Default git remotes in this checkout include upstream `Gozargah` and fork `origin` pointing to `Unblocked-Monkeys/Marzban`.
