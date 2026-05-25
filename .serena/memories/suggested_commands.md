@@ -1,0 +1,14 @@
+# Suggested commands
+- `rg --files .github`
+- `rg -n "pattern" path`
+- `git status --short`
+- `git diff -- path`
+- `python3 -m pip install -r requirements.txt`
+- `alembic upgrade head`
+- `python3 main.py`
+- `./build_dashboard.sh`
+- `cd app/dashboard && npm ci`
+- `cd app/dashboard && VITE_BASE_API=/api/ npm run build -- --outDir build --assetsDir statics`
+- `docker compose up -d`
+- `docker compose config`
+- `marzban-cli --help`
